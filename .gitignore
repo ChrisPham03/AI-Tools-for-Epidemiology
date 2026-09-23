@@ -1,0 +1,29 @@
+# secrets
+.env
+*.tfvars
+!*.tfvars.example
+
+# sample data (confidential / not ours to publish)
+data/*
+!data/.gitkeep
+
+# generated
+outputs/*
+!outputs/.gitkeep
+cache/*
+!cache/.gitkeep
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# macOS
+.DS_Store

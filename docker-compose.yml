@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data          # put PDFs here
+      - ./outputs:/app/outputs    # parsed elements and run logs
+      - ./cache:/app/cache        # saved LLM responses (replay without credentials)
+      - ~/.aws:/root/.aws:ro      # optional: use your local AWS profile
+
+  test:
+    build: .
+    entrypoint: ["python", "-m", "pytest", "-q"]
+    command: []
+    volumes:
+      - ./data:/app/data
