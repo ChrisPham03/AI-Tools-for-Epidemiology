@@ -56,3 +56,17 @@ def test_not_found_is_reported(doc):
     found = Finder(FakeLLM(out)).find(doc, "What is the incubation period?")
     report = build_report(doc, "What is the incubation period?", found)
     assert not report.answers and report.not_found_reason
+
+
+def test_unverified_candidate_is_not_called_not_found(doc):
+    from epiextract.reporter import to_text
+    report = build_report(doc, "q", FinderOutput(answers=[draft(quote="made-up quote")]))
+    text = to_text(report)
+    assert "NOT FOUND" not in text
+    assert "No verified answer" in text and "made-up quote" in text
+
+
+def test_under5_row_quote_now_matches(doc):
+    d = draft(measure_as_reported="attack rate", value=24.2, element_id="p3-table1",
+              quote="Among children aged less than 5 years | (32,774) | 794 | 24.2")
+    assert len(build_report(doc, "q", FinderOutput(answers=[d])).answers) == 1

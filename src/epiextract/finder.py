@@ -20,7 +20,8 @@ Rules:
 - Match the question's scope (population, age group, period). If a value is for a different
   scope, still record it but state the actual population precisely.
 - study_period is when the data was collected, not the publication year.
-- If nothing in the document answers the question, return no answers and explain in not_found_reason.
+- If nothing in the document answers the question, return an EMPTY answers list and explain in
+  not_found_reason. Never return a placeholder answer without a value.
 - Figures marked "image content not read" contain only a caption; never infer values from them."""
 
 
@@ -46,3 +47,5 @@ class Finder:
             f"Question: {question}"
         )
         return self.llm.extract(SYSTEM, prompt, FinderOutput)
+    
+    

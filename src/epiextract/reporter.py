@@ -27,6 +27,7 @@ class Report:
     document: str
     answers: list[Extraction] = field(default_factory=list)
     rejected: list[tuple[ExtractionDraft, str]] = field(default_factory=list)
+    malformed: list[str] = field(default_factory=list)
     not_found_reason: str | None = None
 
 
@@ -46,7 +47,9 @@ def ground(doc: ParsedDocument, draft: ExtractionDraft) -> tuple[Extraction | No
 
 
 def build_report(doc: ParsedDocument, question: str, found: FinderOutput) -> Report:
-    report = Report(question=question, document=doc.document, not_found_reason=found.not_found_reason)
+    report = Report(question=question, document=doc.document, not_found_reason=found.not_found_reason,
+                    malformed=[f"{a.raw.get('measure_as_reported', '?')}: {a.error}"
+                               for a in found.invalid_answers])
     for draft in found.answers:
         extraction, problem = ground(doc, draft)
         if extraction:
@@ -72,7 +75,11 @@ def _fmt_value(d: ExtractionDraft) -> str:
 
 def to_text(report: Report) -> str:
     out = [f"Question: {report.question}", f"Document: {report.document}", ""]
-    if not report.answers:
+    if not report.answers and report.rejected:
+        n = len(report.rejected)
+        out.append(f"No verified answer. {n} candidate{'s' if n > 1 else ''} found, "
+                   "but could not be matched to the source. Check manually.")
+    elif not report.answers:
         out.append("NOT FOUND in this document.")
         if report.not_found_reason:
             out.append(f"  Reason: {report.not_found_reason}")
@@ -88,7 +95,14 @@ def to_text(report: Report) -> str:
             "",
         ]
     if report.rejected:
-        out.append("Not shown (no verifiable source):")
+        out.append("")
+        out.append("Unverified candidates (not shown as answers):")
         for d, problem in report.rejected:
-            out.append(f"  - {d.measure_as_reported} = {d.value}: {problem}")
+            out.append(f"  - {d.measure_as_reported} = {d.value} (cited {d.element_id}): {problem}")
+            out.append(f'    Model\'s quote: "{d.quote}"')
+    if report.malformed:
+        out.append("")
+        out.append("Model answers dropped because they broke the schema rules (see run log):")
+        for m in report.malformed:
+            out.append(f"  - {m}")
     return "\n".join(out)

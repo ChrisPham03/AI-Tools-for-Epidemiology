@@ -62,6 +62,38 @@ def line_text(line: list[dict], cell_sep: bool = False) -> str:
     return text
 
 
+def table_text(words: list[dict], body_bottom: float | None) -> str:
+    """Render table rows as 'cell | cell | cell'.
+
+    A long cell can wrap onto the next line, e.g.
+        Among children aged less than | (32,774) | 794 | 24.2
+        5 years
+    A line inside the table body that holds only one cell is glued back onto the
+    cell above it whose column it falls under. Lines below the table's last rule
+    (footnotes) are never merged.
+    """
+    rows: list[list[list]] = []  # row -> cells -> [x0, x1, text]
+    for line in group_lines(words):
+        cells: list[list] = []
+        for w in line:
+            if cells and w["x0"] - cells[-1][1] <= CELL_GAP:
+                cells[-1][1] = w["x1"]
+                cells[-1][2] += " " + w["text"]
+            else:
+                cells.append([w["x0"], w["x1"], w["text"]])
+        in_body = body_bottom is not None and line[0]["top"] < body_bottom
+        if in_body and len(cells) == 1 and rows and len(rows[-1]) > 1:
+            x0, x1, text = cells[0]
+            # attach to the cell above that overlaps it most; if none overlap, the nearest one
+            overlap = lambda c: min(c[1], x1) - max(c[0], x0)
+            distance = lambda c: abs((c[0] + c[1]) / 2 - (x0 + x1) / 2)
+            target = max(rows[-1], key=lambda c: (overlap(c), -distance(c)))
+            target[2] += " " + text
+        else:
+            rows.append(cells)
+    return "\n".join(" | ".join(c[2] for c in row) for row in rows)
+
+
 def bbox_of(items: list[dict]) -> tuple[float, float, float, float]:
     return (
         round(min(i["x0"] for i in items), 1),
@@ -129,9 +161,9 @@ class PdfPlumberParser(DocumentParser):
             if m := TABLE_CAPTION.match(text):
                 below = [r for r in rules if r["top"] > line[0]["top"] and col[0] <= r["x0"] < col[1]]
                 below = [r for r in below if r["top"] - line[0]["top"] < 300][:3]
-                note = None
+                note, body_bottom = None, None
                 if len(below) == 3:
-                    bottom = below[-1]["top"]
+                    bottom = body_bottom = below[-1]["top"]
                     # include a footnote line directly under the table (e.g. "CFR = ...")
                     foot = [w for w in words if col[0] <= w["x0"] < col[1] and 0 < w["top"] - bottom < 14]
                     if foot:
@@ -141,10 +173,10 @@ class PdfPlumberParser(DocumentParser):
                     note = "table boundary not detected; caption only"
                 box = (col[0], line[0]["top"], col[1], bottom)
                 regions.append(box)
-                rows = group_lines([w for w in words if inside(w, box)])
-                content = fix_ligatures("\n".join(line_text(r, cell_sep=True) for r in rows))
+                table_words = [w for w in words if inside(w, box)]
+                content = fix_ligatures(table_text(table_words, body_bottom))
                 out.append(self._element(doc, page_no, f"table{m.group(1)}", ElementType.table,
-                                         content, bbox_of([w for r in rows for w in r]), note=note))
+                                         content, bbox_of(table_words), note=note))
 
         for i, img in enumerate(page.images, start=1):
             caption = next(

@@ -12,7 +12,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 
 # ---------------------------------------------------------------- documents
@@ -105,11 +105,37 @@ class ExtractionDraft(BaseModel):
         return self
 
 
+class InvalidAnswer(BaseModel):
+    raw: dict
+    error: str
+
+
 class FinderOutput(BaseModel):
     answers: list[ExtractionDraft] = Field(default_factory=list)
     not_found_reason: Optional[str] = Field(
         None, description="If nothing in the document answers the question, say why"
     )
+    # Filled by the system, not the model: answers that broke the schema rules.
+    # Kept (not thrown away) so they show up in the report and the run log.
+    invalid_answers: list[InvalidAnswer] = Field(default_factory=list, exclude=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _set_aside_invalid_answers(cls, data):
+        """One malformed answer must not discard the valid ones or crash the run."""
+        if not isinstance(data, dict) or not isinstance(data.get("answers"), list):
+            return data
+        valid, invalid = [], list(data.get("invalid_answers") or [])
+        for item in data["answers"]:
+            if isinstance(item, ExtractionDraft):
+                valid.append(item)
+                continue
+            try:
+                valid.append(ExtractionDraft.model_validate(item))
+            except ValidationError as err:
+                msg = "; ".join(e["msg"] for e in err.errors())
+                invalid.append({"raw": item if isinstance(item, dict) else {"value": item}, "error": msg})
+        return {**data, "answers": valid, "invalid_answers": invalid}
 
 
 class Source(BaseModel):

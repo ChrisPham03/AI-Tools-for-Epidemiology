@@ -34,3 +34,19 @@ def test_ligatures_repaired_and_minus_signs_kept(doc):
 def test_figures_marked_as_unread(doc):
     fig = doc.get("p3-figure1")
     assert fig.tier == 4 and "not read" in fig.note
+
+
+def test_wrapped_table_cell_is_glued_back(doc):
+    # "5 years" wraps onto its own line in the PDF; it belongs to the row label above
+    t1 = doc.get("p3-table1").content
+    assert "Among children aged less than 5 years | (32,774) | 794 | 24.2" in t1
+    assert "\n5 years" not in t1
+
+
+def test_wrapped_header_joins_its_own_column(doc):
+    t2 = doc.get("p3-table2").content
+    assert "Complications occurred no. (%)" in t2
+
+
+def test_footnotes_below_table_are_not_merged(doc):
+    assert "\nCFR = case fatality rate" in doc.get("p3-table2").content

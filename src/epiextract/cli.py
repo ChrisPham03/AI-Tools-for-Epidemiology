@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 from .finder import Finder
 from .llm import default_client
@@ -75,6 +76,10 @@ def main() -> None:
             ask_cmd(args.pdf, args.question)
     except (RuntimeError, FileNotFoundError) as err:
         raise SystemExit(f"Error: {err}")
+    except ValidationError as err:
+        raise SystemExit(f"Error: the model's response could not be validated, so no answer is shown.\n{err}")
+    except Exception as err:  # e.g. AWS access or network errors
+        raise SystemExit(f"Error ({type(err).__name__}): {err}")
 
 
 if __name__ == "__main__":

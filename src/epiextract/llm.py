@@ -43,6 +43,19 @@ def inline_refs(schema: dict) -> dict:
     return resolve(schema)
 
 
+SYSTEM_ONLY_FIELDS = {"invalid_answers"}
+
+
+def tool_schema(schema: Type[BaseModel]) -> dict:
+    """JSON schema for the model, without fields the system fills in itself."""
+    js = inline_refs(schema.model_json_schema())
+    for f in SYSTEM_ONLY_FIELDS:
+        js.get("properties", {}).pop(f, None)
+        if f in js.get("required", []):
+            js["required"].remove(f)
+    return js
+
+
 class BedrockClient(LLMClient):
     TOOL = "record_answer"
 
@@ -58,7 +71,7 @@ class BedrockClient(LLMClient):
             "toolSpec": {
                 "name": self.TOOL,
                 "description": "Record the answer in the required structure.",
-                "inputSchema": {"json": inline_refs(schema.model_json_schema())},
+                "inputSchema": {"json": tool_schema(schema)},
             }
         }
         messages = [{"role": "user", "content": [{"text": prompt}]}]
