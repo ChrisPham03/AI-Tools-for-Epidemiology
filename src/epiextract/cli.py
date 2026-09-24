@@ -24,6 +24,14 @@ OUTPUTS = Path("outputs")
 
 
 def parse_cmd(pdf: Path) -> ParsedDocument:
+    """Parse a PDF and save the extracted element structure to disk.
+
+    Args:
+        pdf: The PDF to parse.
+
+    Returns:
+        ParsedDocument: The parsed document object used by downstream analysis.
+    """
     doc = PdfPlumberParser().parse(pdf)
     OUTPUTS.mkdir(exist_ok=True)
     out = OUTPUTS / f"{pdf.stem}.elements.json"
@@ -37,6 +45,12 @@ def parse_cmd(pdf: Path) -> ParsedDocument:
 
 
 def ask_cmd(pdf: Path, question: str) -> None:
+    """Parse a document, ask a question, and print the grounded answer summary.
+
+    Args:
+        pdf: The PDF document to inspect.
+        question: The epidemiology question to answer from the paper.
+    """
     doc = PdfPlumberParser().parse(pdf)
     llm = default_client()
     found = Finder(llm).find(doc, question)
@@ -60,6 +74,7 @@ def ask_cmd(pdf: Path, question: str) -> None:
 
 
 def main() -> None:
+    """Run the command-line interface for parsing PDFs and answering questions."""
     load_dotenv()
     ap = argparse.ArgumentParser(prog="epiextract")
     sub = ap.add_subparsers(dest="cmd", required=True)

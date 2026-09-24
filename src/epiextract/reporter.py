@@ -17,6 +17,7 @@ UNREAD_NOTE = "image content not read"
 
 
 def normalize(text: str) -> str:
+    """Collapse whitespace and punctuation noise so source quotes can be compared reliably."""
     text = text.replace("|", " ").lower()
     return re.sub(r"\s+", " ", text).strip()
 
@@ -32,6 +33,7 @@ class Report:
 
 
 def ground(doc: ParsedDocument, draft: ExtractionDraft) -> tuple[Extraction | None, str | None]:
+    """Verify that a model answer cites a real element and quote that matches the source text."""
     element = doc.get(draft.element_id)
     if element is None:
         return None, f"cited element '{draft.element_id}' does not exist"
@@ -47,6 +49,7 @@ def ground(doc: ParsedDocument, draft: ExtractionDraft) -> tuple[Extraction | No
 
 
 def build_report(doc: ParsedDocument, question: str, found: FinderOutput) -> Report:
+    """Create a report that separates valid answers from rejected or malformed candidates."""
     report = Report(question=question, document=doc.document, not_found_reason=found.not_found_reason,
                     malformed=[f"{a.raw.get('measure_as_reported', '?')}: {a.error}"
                                for a in found.invalid_answers])
@@ -60,6 +63,7 @@ def build_report(doc: ParsedDocument, question: str, found: FinderOutput) -> Rep
 
 
 def _fmt_value(d: ExtractionDraft) -> str:
+    """Format an extraction as a compact human-readable value string for display."""
     if d.shape.value == "central_spread":
         main = f"median {d.median:g}" if d.median is not None else f"mean {d.mean:g}"
     else:
@@ -74,6 +78,7 @@ def _fmt_value(d: ExtractionDraft) -> str:
 
 
 def to_text(report: Report) -> str:
+    """Render a plain-text summary of the report for CLI output."""
     out = [f"Question: {report.question}", f"Document: {report.document}", ""]
     shown = [x for x in report.answers if x.status != "excluded"]
     excluded = [x for x in report.answers if x.status == "excluded"]

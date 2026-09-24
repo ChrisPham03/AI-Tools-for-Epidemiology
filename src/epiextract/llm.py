@@ -28,7 +28,7 @@ class LLMClient(ABC):
 
 
 def inline_refs(schema: dict) -> dict:
-    """Pydantic puts nested models under $defs; inline them for tool schemas."""
+    """Inline nested Pydantic schema references so the model tool schema is self-contained."""
     defs = schema.pop("$defs", {})
 
     def resolve(node):
@@ -47,7 +47,7 @@ SYSTEM_ONLY_FIELDS = {"invalid_answers"}
 
 
 def tool_schema(schema: Type[BaseModel]) -> dict:
-    """JSON schema for the model, without fields the system fills in itself."""
+    """Build the JSON schema the model should return while excluding system-managed fields."""
     js = inline_refs(schema.model_json_schema())
     for f in SYSTEM_ONLY_FIELDS:
         js.get("properties", {}).pop(f, None)
@@ -60,6 +60,7 @@ class BedrockClient(LLMClient):
     TOOL = "record_answer"
 
     def __init__(self, model_id: str | None = None, region: str | None = None, max_retries: int = 1):
+        """Create a Bedrock-backed client that enforces the target Pydantic response schema."""
         import boto3  # imported here so replay mode works without AWS setup
 
         self.model_id = model_id or os.environ["BEDROCK_MODEL_ID"]
@@ -67,6 +68,7 @@ class BedrockClient(LLMClient):
         self.max_retries = max_retries
 
     def extract(self, system: str, prompt: str, schema: Type[T]) -> T:
+        """Call Bedrock with a tool schema and validate the returned structured answer."""
         tool = {
             "toolSpec": {
                 "name": self.TOOL,
@@ -108,16 +110,19 @@ class CachedLLM(LLMClient):
     """Replays saved responses; calls the live client only on a cache miss."""
 
     def __init__(self, cache_dir: str | Path, live: LLMClient | None = None, model_id: str | None = None):
+        """Create a cache wrapper around a live LLM client for deterministic offline replay."""
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.live = live
         self.model_id = live.model_id if live else (model_id or os.environ.get("BEDROCK_MODEL_ID", "unknown"))
 
     def _key(self, system: str, prompt: str, schema: Type[BaseModel]) -> Path:
+        """Build a deterministic cache key from the prompt, model and response schema."""
         raw = json.dumps([self.model_id, system, prompt, schema.model_json_schema()], sort_keys=True)
         return self.cache_dir / f"{hashlib.sha256(raw.encode()).hexdigest()[:16]}.json"
 
     def extract(self, system: str, prompt: str, schema: Type[T]) -> T:
+        """Return a cached model response when available, otherwise call the live client."""
         path = self._key(system, prompt, schema)
         if path.exists():
             return schema.model_validate_json(path.read_text())
@@ -132,5 +137,6 @@ class CachedLLM(LLMClient):
 
 
 def default_client(cache_dir: str | Path = "cache/llm") -> LLMClient:
+    """Create the default LLM client, preferring a live Bedrock client when configured."""
     live = BedrockClient() if os.environ.get("BEDROCK_MODEL_ID") else None
     return CachedLLM(cache_dir, live=live)

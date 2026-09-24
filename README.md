@@ -1,146 +1,141 @@
 # Trustworthy Evidence Extraction for Epidemiology
 
-A prototype that helps scientists query and extract epidemiological values from research papers. Every answer is traceable to its source, and the scientist stays in control.
+A prototype AI tool that helps epidemiologists get values (attack rates, case fatality rates, vaccine efficacy) out of research papers. Every answer shows exactly where it came from, and the scientist decides what to trust.
 
-## The problem I am addressing
+## Summary
 
-Scientists need values such as attack rates, case fatality rates and vaccine efficacy from long papers. These numbers are buried in text, tables and figures, so the real pain point is **information overload**.
+### The problem
 
-These values feed modelling, risk assessment and guideline development. If a number is wrong, the decisions built on it are wrong too. So I treated a fast answer as worthless unless it is **accurate, transparent and defensible**.
+Epidemiologists gather evidence to support modelling, risk assessment and guideline development. Their pain point is data gathering: too many sources, and information overload. AI can help, but it can still hallucinate. So this tool helps with the work that slows scientists down, and the final decision stays with them.
 
-## Where this fits, and why I chose this step
+Screening (deciding which papers belong in a review) is handled upstream by GREP-Agent. This project focuses on the next step: getting reliable values out of full papers.
 
-I reviewed the sample files to understand the pipeline before choosing a focus:
+### My focus
 
-- The **GREP-Agent draft** (Cochrane-GREP-ExP-Screening-Draft) describes an LLM tool that screens articles by title and abstract. It frames the larger goal as automating the *identification and extraction* of epidemiological parameters. GREP-Agent covers identification.
-- The **L1 screening CSV** is the output of that step: 99 citations with title/abstract metadata and three human screening labels. Only 14 pass all three criteria.
-- The team's note confirms the CSV holds title/abstract information only, and that the PDFs do not necessarily match it.
+I started from one use case: a scientist asks for a metric, and the AI gives an answer. That raises three questions: how do we know it is accurate, how can we trust it, and how can we check it? The prototype addresses two core issues:
 
-So screening is already handled upstream. The step after it, getting reliable values out of the full papers, is where I focused. I use the GREP-Agent draft as my requirements: it shows what epidemiologists want answered.
+1. **Accuracy.** If the data is wrong, the decision is wrong. To check an answer, we need to track its source, so every answer carries its page, table or paragraph, and an exact quote.
+2. **Controllability.** Once the source is visible, the scientist must be able to exclude an ambiguous one. Exclusions are saved, reapplied to later questions, and reversible.
 
-## My focus: AI assists, the scientist decides
+### Approach: divide and conquer
 
-I address two core problems.
+The expected output is a highly correct answer with its source. Working back from that, the task splits into four parts, grouped into a parser and three agents:
 
-**1. Trust.** Every value shows where it came from: document, page, table and quote. If no source supports an answer, the system says "not found" instead of guessing.
-*Reasoning:* in 3.pdf I found five internal inconsistencies. For example, Table 1 reports an attack rate of 6.2%, but its own counts give 1,204 / 193,931 = 0.62%. A standard AI tool would copy 6.2% with a correct citation. A citation proves where a number came from, not that it is right.
+| Part | Component | What it does | Status |
+|---|---|---|---|
+| Find and parse | Parser | Breaks a PDF into labelled pieces (paragraphs, tables, figures) with page, position and a reliability tier | Built |
+| Extract | Agent 1: Finder | LLM extracts values in a fixed format, citing a piece and an exact quote | Built |
+| Check | Agent 2: Checker | Code confirms the quote is really in the cited piece | Built (lives in `reporter.py`) |
+| | | Code checks the numbers themselves (recompute rates, compare text and tables) | **Not built** (time) |
+| Present and control | Agent 3: Reporter + app | Shows the answer with the page highlighted; scientist accepts or excludes | Built |
 
-**2. Control.** The scientist can check any source in one click, and accept, reject or exclude values or sources. Nothing is removed silently.
-*Reasoning:* the GREP-Agent design itself keeps humans in the loop, sending uncertain cases to a reviewer. I apply the same principle: the AI reduces workload, but the final decision belongs to the scientist.
+The rule across all components: **the LLM reads, code checks, the scientist decides.**
 
-These two goals pull against each other. More evidence on screen builds trust but adds to the overload I am trying to reduce. So I show the answer first and the evidence on demand.
+### Tools and why
 
-## Priorities
-
-| Priority | What | Why |
-|---|---|---|
-| Core | Read sources correctly and show where each value came from | Traceability cannot be added later; it must be captured at extraction |
-| Core | Let the scientist exclude doubtful values or sources, with a reason | Keeps the scientist in control, and exclusions stay traceable |
-| Extra | Validate content: recompute rates, compare text and tables | Catches errors in the paper itself, like 3.pdf's attack rate |
-
-## Approach
-
-- **Step 0: profile sources.** I label each part of a PDF by reliability: digital tables and text are more reliable than scanned text, and figures are least reliable. I do this per element, not per file, because 3.pdf alone contains digital text, tables and figure images.
-- **Agent 1 (Finder):** understands the query and extracts values, recording the source at the moment of extraction.
-- **Agent 2 (Checker):** understands the question and uses code-based tools to verify values. It also checks scope: asked for the under-5 CFR, the all-ages 1.2% is flagged as not answering the question.
-- **Agent 3 (Reporter):** presents answers with sources and flags. No source, no answer.
-
-**The LLM reads and decides; code does anything that must be exact.** LLMs are unreliable at arithmetic, so recalculation and comparison are plain code.
-
-## Out of scope
-
-- Screening, handled upstream by GREP-Agent
-- Production deployment and scale
-
-## Development stages
-
-| Stage | Goal | Status |
-|---|---|---|
-| 1. Core | Read the source correctly and answer with sources | ✅ `v0.1` |
-| 3. Control | App with on-page evidence; accept and exclude with reasons | ✅ `v0.2` |
-| 2. Trust | Agent 2: recompute rates, compare mentions, check scope; gold set and evaluation | Designed, next |
-
-Stage 3 was built before Stage 2 on purpose: together, Stages 1 and 3 demonstrate both core problems (trust through verified sources, control through the scientist's decisions). Stage 2 adds content validation on top, and its value is already visible in the sample paper (see below).
-
-## What Stage 1 does
-
-1. **Parse** a PDF into elements (paragraphs, tables, figures). Each element has an ID (`p3-table1`), page, position, section and reliability tier. Two-column layouts are read column by column, and tables keep their rows (`Total | 1204 | 14 | 1.2`).
-2. **Find** (Agent 1): an LLM on Amazon Bedrock answers the question in the extraction schema, citing an element ID and an exact quote. Temperature 0; the output is validated with Pydantic, with one retry if invalid.
-3. **Report** (Agent 3): code checks that the cited element exists and that the quote really appears in it. Answers that fail are not shown as answers. If nothing is supported, the result is "NOT FOUND".
-
-Every `ask` run is logged to `outputs/runs/` (question, model, raw finder output, accepted and rejected answers).
-
-### Design decisions
-
-- **The system fills what it knows.** The LLM names only the element ID and quote; document, page and tier come from the parser, so they cannot be hallucinated.
-- **Figures are not read yet.** Figure elements hold only their caption and are tier 4. Answers citing them are rejected rather than trusted.
-- **Text cleaning must not change numbers.** Line-break hyphens are joined only between letters, so `(2828- 1478)` keeps its minus sign. There is a test for this.
-- **Swappable services.** `DocumentParser` and `LLMClient` are interfaces. Stage 1 uses pdfplumber (local, for digital PDFs) and Bedrock. Textract, or Azure Document Intelligence and Azure OpenAI in production, plug in without changing the pipeline.
-- **Replay without credentials.** `CachedLLM` saves every model response under `cache/llm/` and replays it, so a recorded demo runs without AWS access.
-
-### Known limitations
-
-- The local parser is tuned to common two-column journal layouts (e.g. tables drawn with three horizontal rules). Other layouts need Textract.
-- Scanned pages are detected and marked, but not OCR'd yet.
-- Stage 1 checks that a value is *cited correctly*, not that it is *correct*. Checking the content itself is Stage 2.
-
-## What Stage 3 adds
-
-- **An app** (Streamlit): ask a question, or pick one of the example questions, and see each answer with its value, context, source and quote.
-- **Evidence on the page.** "Show on the page" renders the cited table or paragraph from the PDF with the region highlighted, so a value can be checked by eye in one click.
-- **The scientist decides.** Accept an answer, or exclude it with a reason at three levels: this value, everything from this table or paragraph, or the whole document. Decisions are saved to `outputs/decisions.json`, reapplied to every later question, and can be undone. Nothing is deleted.
-- **Honest summaries.** Results say what they rest on, e.g. "2 answers from 2 sources. 1 excluded by you." Unverified candidates and malformed model answers are shown separately, never as answers.
-
-## Stage 2 (designed, next): checking the content
-
-Stage 1 proves where a number came from, not that it is right. The sample paper shows why that matters:
-
-| Value | Problem in the paper |
+| Tool | Why |
 |---|---|
-| Attack rate, Table 1 | 1,204 / 193,931 = 0.62%, reported as 6.2% (under-5s: 2.42%, reported as 24.2%) |
-| CFR by vaccination | The text swaps the values in Table 3 |
-| Age group with higher attack rate | Discussion says over 5; Table 1 says under 5 |
-| Vaccine efficacy | 47.7% in Results, 47.4% in Discussion |
-| Vaccination counts, Table 3 | 220 + 963 + 11 = 1,194, not 1,204 |
+| pdfplumber | Gives every word with its position, which traceability needs; runs locally |
+| Pydantic | Defines the answer format and rejects malformed model output |
+| Amazon Bedrock (Nova Lite) | Existing AWS access; the Canada inference profile keeps data in Canada |
+| Streamlit | A working interface in pure Python |
+| pytest, Docker | Tests without AWS; one-command setup |
 
-Agent 2 will check these with plain-code tools (`recompute_rate`, `compare_mentions`, `check_sum`, `check_scope`), chosen by the LLM but executed by code. The Finder already records counts alongside rates (e.g. 1204 / 193931) so `recompute_rate` has what it needs. A hand-checked gold set and an evaluation script will measure extraction accuracy and checker recall.
+Azure OpenAI and Azure Document Intelligence are the intended production platform, to match the Government of Canada's Microsoft environment. The parser and LLM sit behind interfaces (`DocumentParser`, `LLMClient`), so switching means two new classes.
 
-## Getting started
+### Challenges and trade-offs
 
-Sample PDFs are not committed. Put them in `data/` (e.g. `data/3.pdf`).
+- **A correct source is not a correct number.** The sample paper reports an attack rate of 6.2%, but its own counts (1,204 / 193,931) give 0.62%. It has four more internal contradictions. The prototype cites these faithfully; catching them is the unbuilt number check.
+- **Strict grounding costs recall.** Answers whose quote cannot be matched are not shown. This is safe, but a correct answer can be hidden; such answers are listed as unverified candidates instead.
+- **Transparency vs overload.** More evidence builds trust but adds clutter, so the app shows the answer first and the evidence on demand.
+- **Messy inputs.** Two-column layouts, wrapped table rows, figures and scanned pages. The local parser handles common journal layouts; scans and figures are not read yet.
+
+### Validation
+
+- **Grounding:** code checks every quote against its source. Page, tier and section come from the parser, never the model.
+- **Abstaining:** the model may answer "not found", and does for values the paper does not report.
+- **Reliability tiers:** 1 digital table, 2 digital text, 3 scanned page, 4 figure (not read, never trusted alone).
+- **Live testing** on Bedrock found three failures, all safe: a cleaning step merged two numbers, a wrapped table row caused a correct answer to be rejected, and an empty model answer crashed the run. All are fixed and covered by tests (29 in total, none needing AWS).
+
+**Next:** number checks (recompute, compare, check sums and scope), a hand-checked gold set with an evaluation script, OCR for scans, reading figures, search across many papers, and the move to Azure.
+
+### How this was built
+
+I did the analysis, chose the focus, designed the components and tested the prototype live. Claude, an AI assistant, wrote the code, tests and documentation, and fixed the failures testing found. **I have not yet reviewed every line of the code.** I verified its behaviour through the test suite and live runs, and a full review is my next step.
+
+## Running it
+
+Sample PDFs are not committed. Put them in `data/` (for example `data/3.pdf`).
+
+### 1. Install
 
 ```bash
-cp .env.example .env        # add BEDROCK_MODEL_ID and AWS credentials to run live
-
-# with Docker
-docker compose build
-docker compose up ui                                           # app at http://localhost:8501
-docker compose run --rm test                                   # run tests
-docker compose run --rm app parse data/3.pdf                   # parse only (no AWS needed)
-docker compose run --rm app ask data/3.pdf "What was the case fatality rate?"
-
-# without Docker
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-PYTHONPATH=src streamlit run src/epiextract/app.py              # app
-PYTHONPATH=src python -m pytest -q
+```
+
+### 2. Run the tests (no AWS needed)
+
+```bash
+PYTHONPATH=src python -m pytest -q      # expect 29 passed
+```
+
+### 3. Connect to Amazon Bedrock
+
+1. In the AWS console, open Amazon Bedrock and check a model runs in the playground (Nova Lite needs no sign-up form).
+2. Find the model and its Canada inference profile:
+   ```bash
+   aws bedrock list-inference-profiles --region ca-central-1 \
+     --query "inferenceProfileSummaries[?contains(inferenceProfileId, 'nova-lite')].inferenceProfileId" --output text
+   ```
+3. Create `.env` (never committed):
+   ```
+   AWS_REGION=ca-central-1
+   BEDROCK_MODEL_ID=ca.amazon.nova-lite-v1:0
+   ```
+   Credentials come from your AWS CLI setup (`aws configure`); add `AWS_PROFILE=<name>` to use a named profile.
+
+Without Bedrock, the app replays saved answers from `cache/llm/` for questions that were asked before.
+
+### 4. Start the app
+
+```bash
+PYTHONPATH=src streamlit run src/epiextract/app.py
+```
+
+Opens at http://localhost:8501. Pick a paper, ask a question or click an example, open "Show on the page", and accept or exclude answers.
+
+### 5. Command line (optional)
+
+```bash
+PYTHONPATH=src python -m epiextract.cli parse data/3.pdf
 PYTHONPATH=src python -m epiextract.cli ask data/3.pdf "What was the case fatality rate?"
+```
+
+Each `ask` writes a run log to `outputs/runs/`. Decisions are stored in `outputs/decisions.json`.
+
+### With Docker
+
+```bash
+docker compose build
+docker compose up ui                 # app at http://localhost:8501
+docker compose run --rm test         # tests
 ```
 
 ## Repository structure
 
 ```
 src/epiextract/
-  schema.py     # Element and shape-based Extraction models
-  parser.py     # DocumentParser interface + PdfPlumberParser
-  llm.py        # LLMClient interface + BedrockClient + CachedLLM (replay)
-  finder.py     # Agent 1: extract values with element ID and quote
-  reporter.py   # Agent 3: grounding checks, "no source, no answer", output
-  decisions.py  # accept / exclude, saved and reapplied, reversible
-  evidence.py   # renders the cited region of a page, highlighted
-  app.py        # Streamlit app
-  cli.py        # parse / ask commands, run logs
-tests/          # parser, grounding, schema and decision tests (no AWS needed)
-terraform/      # AWS provider (resources added with Textract in Stage 3)
-data/ outputs/ cache/   # local only, git-ignored
+  schema.py     data shapes: Element (a piece of a PDF), ExtractionDraft (one answer)
+  parser.py     PDF into elements with page, position and tier
+  llm.py        Bedrock client (forced JSON format) and response cache
+  finder.py     Agent 1: extraction prompt
+  reporter.py   Agent 3 and the quote check: no source, no answer
+  decisions.py  accept and exclude, saved and reapplied
+  evidence.py   page image with the cited region highlighted
+  app.py        Streamlit app
+  cli.py        command line and run logs
+tests/          29 tests, no AWS needed
+terraform/      AWS provider skeleton for later resources
 ```

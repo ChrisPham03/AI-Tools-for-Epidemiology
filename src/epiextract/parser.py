@@ -42,6 +42,7 @@ def fix_ligatures(text: str) -> str:
 
 
 def group_lines(words: list[dict]) -> list[list[dict]]:
+    """Group word fragments into visual text lines based on their vertical position."""
     words = sorted(words, key=lambda w: (w["top"], w["x0"]))
     lines: list[list[dict]] = []
     for w in words:
@@ -55,6 +56,7 @@ def group_lines(words: list[dict]) -> list[list[dict]]:
 
 
 def line_text(line: list[dict], cell_sep: bool = False) -> str:
+    """Join a line of words into a single text string, optionally separating table cells."""
     text = line[0]["text"]
     for a, b in zip(line, line[1:]):
         gap = b["x0"] - a["x1"]
@@ -95,6 +97,7 @@ def table_text(words: list[dict], body_bottom: float | None) -> str:
 
 
 def bbox_of(items: list[dict]) -> tuple[float, float, float, float]:
+    """Compute the bounding box that encloses a group of PDF words or image items."""
     return (
         round(min(i["x0"] for i in items), 1),
         round(min(i["top"] for i in items), 1),
@@ -104,6 +107,7 @@ def bbox_of(items: list[dict]) -> tuple[float, float, float, float]:
 
 
 def inside(word: dict, box: tuple[float, float, float, float]) -> bool:
+    """Check whether a word falls inside a rectangular region used for layout detection."""
     cx = (word["x0"] + word["x1"]) / 2
     cy = (word["top"] + word["bottom"]) / 2
     return box[0] - 1 <= cx <= box[2] + 1 and box[1] - 1 <= cy <= box[3] + 1
@@ -113,6 +117,7 @@ def inside(word: dict, box: tuple[float, float, float, float]) -> bool:
 
 class PdfPlumberParser(DocumentParser):
     def parse(self, pdf_path: str | Path) -> ParsedDocument:
+        """Parse a PDF into document elements, including text blocks, tables, and figures."""
         pdf_path = Path(pdf_path)
         doc = pdf_path.name
         elements: list[Element] = []

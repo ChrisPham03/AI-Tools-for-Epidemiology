@@ -12,7 +12,7 @@ HIGHLIGHT_STROKE = (183, 121, 31)
 
 def page_region(pdf_path: str | Path, page: int, bbox: tuple[float, float, float, float],
                 margin: float = 40, resolution: int = 130, full_page: bool = False) -> Image.Image:
-    """The cited element highlighted.
+    """Return a page crop with the cited element highlighted for inspection.
 
     By default the image is cropped to the element plus some surrounding context, so the
     value is easy to find. With full_page=True the whole page is shown, still highlighted.

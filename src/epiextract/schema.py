@@ -51,6 +51,7 @@ class ParsedDocument(BaseModel):
     elements: list[Element]
 
     def get(self, element_id: str) -> Optional[Element]:
+        """Return the element matching the given ID, if it exists in the document."""
         return next((e for e in self.elements if e.id == element_id), None)
 
 
@@ -96,6 +97,7 @@ class ExtractionDraft(BaseModel):
 
     @model_validator(mode="after")
     def _shape_has_a_value(self):
+        """Validate that each extraction shape includes the numeric field it requires."""
         if self.shape == Shape.central_spread:
             ok = self.mean is not None or self.median is not None
         else:
@@ -122,7 +124,7 @@ class FinderOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _set_aside_invalid_answers(cls, data):
-        """One malformed answer must not discard the valid ones or crash the run."""
+        """Keep valid answers and isolate malformed entries instead of failing the whole parse."""
         if not isinstance(data, dict) or not isinstance(data.get("answers"), list):
             return data
         valid, invalid = [], list(data.get("invalid_answers") or [])

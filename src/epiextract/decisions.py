@@ -33,6 +33,7 @@ class Decision(BaseModel):
     time: str = ""
 
     def matches(self, x: Extraction) -> bool:
+        """Return whether a stored decision applies to a given extracted answer."""
         if x.source.document != self.document:
             return False
         if self.scope == "document":
@@ -45,6 +46,7 @@ class Decision(BaseModel):
                 and x.draft.value == self.value)
 
     def describe(self) -> str:
+        """Convert a decision into a human-readable sentence for the UI."""
         if self.scope == "document":
             target = self.document
         elif self.scope == "element":
@@ -55,6 +57,7 @@ class Decision(BaseModel):
 
 
 def decision_for(x: Extraction, scope: Scope, action: Action, reason: str = "") -> Decision:
+    """Build a persisted decision record from an accepted or excluded extraction."""
     return Decision(
         scope=scope, action=action, document=x.source.document,
         element_id=None if scope == "document" else x.source.element_id,
@@ -67,16 +70,19 @@ def decision_for(x: Extraction, scope: Scope, action: Action, reason: str = "") 
 
 class DecisionStore:
     def __init__(self, path: str | Path = "outputs/decisions.json"):
+        """Load prior user decisions from disk into memory for this session."""
         self.path = Path(path)
         self.decisions: list[Decision] = []
         if self.path.exists():
             self.decisions = [Decision.model_validate(d) for d in json.loads(self.path.read_text())]
 
     def save(self) -> None:
+        """Persist all stored decisions to JSON so the UI and CLI can reload them."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps([d.model_dump() for d in self.decisions], indent=2))
 
     def add(self, decision: Decision) -> None:
+        """Insert or replace a decision while keeping only the newest value for each target."""
         # a newer decision on the same target replaces the older one
         self.decisions = [d for d in self.decisions
                           if (d.scope, d.document, d.element_id, d.measure, d.value)
@@ -86,6 +92,7 @@ class DecisionStore:
         self.save()
 
     def undo(self, index: int) -> None:
+        """Remove a decision by list position and save the updated state."""
         del self.decisions[index]
         self.save()
 

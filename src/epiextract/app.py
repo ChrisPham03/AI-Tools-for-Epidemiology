@@ -45,6 +45,15 @@ st.markdown(
 
 @st.cache_resource(show_spinner="Reading the document…")
 def parse(path: str, mtime: float):
+    """Parse a PDF once and return the structured document model for the app.
+
+    Args:
+        path: File path to the source PDF.
+        mtime: File modification time used by Streamlit cache invalidation.
+
+    Returns:
+        ParsedDocument: The parsed document with extracted sections and elements.
+    """
     return PdfPlumberParser().parse(path)
 
 

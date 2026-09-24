@@ -26,6 +26,7 @@ Rules:
 
 
 def render(doc: ParsedDocument) -> str:
+    """Serialize parsed document elements into the XML-like prompt format used by the model."""
     parts = []
     for e in doc.elements:
         if e.type == ElementType.page_image:
@@ -39,9 +40,11 @@ def render(doc: ParsedDocument) -> str:
 
 class Finder:
     def __init__(self, llm: LLMClient):
+        """Store the LLM client used to extract values from the document."""
         self.llm = llm
 
     def find(self, doc: ParsedDocument, question: str) -> FinderOutput:
+        """Ask the model to extract answer candidates and quote-backed evidence for a question."""
         prompt = (
             f'<document name="{doc.document}">\n{render(doc)}\n</document>\n\n'
             f"Question: {question}"
