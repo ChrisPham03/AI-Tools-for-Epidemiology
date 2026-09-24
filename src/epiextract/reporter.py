@@ -64,7 +64,7 @@ def _fmt_value(d: ExtractionDraft) -> str:
         main = f"median {d.median:g}" if d.median is not None else f"mean {d.mean:g}"
     else:
         main = f"{d.value:g}"
-    unit = f" {d.unit}" if d.unit else ""
+    unit = "%" if d.unit in ("%", "percent") else (f" {d.unit}" if d.unit else "")
     extra = ""
     if d.numerator is not None and d.denominator is not None:
         extra = f"  ({d.numerator:g} / {d.denominator:g})"
@@ -75,6 +75,14 @@ def _fmt_value(d: ExtractionDraft) -> str:
 
 def to_text(report: Report) -> str:
     out = [f"Question: {report.question}", f"Document: {report.document}", ""]
+    shown = [x for x in report.answers if x.status != "excluded"]
+    excluded = [x for x in report.answers if x.status == "excluded"]
+    if report.answers:
+        docs = {(x.source.document, x.source.element_id) for x in shown}
+        line = f"{len(shown)} answer{'s' if len(shown) != 1 else ''} from {len(docs)} source{'s' if len(docs) != 1 else ''}."
+        if excluded:
+            line += f" {len(excluded)} excluded by you."
+        out += [line, ""]
     if not report.answers and report.rejected:
         n = len(report.rejected)
         out.append(f"No verified answer. {n} candidate{'s' if n > 1 else ''} found, "
@@ -83,10 +91,11 @@ def to_text(report: Report) -> str:
         out.append("NOT FOUND in this document.")
         if report.not_found_reason:
             out.append(f"  Reason: {report.not_found_reason}")
-    for i, x in enumerate(report.answers, 1):
+    for i, x in enumerate(shown, 1):
         d, s = x.draft, x.source
+        mark = "  [accepted]" if x.status == "accepted" else ""
         out += [
-            f"{i}. {d.measure_as_reported}: {_fmt_value(d)}",
+            f"{i}. {d.measure_as_reported}: {_fmt_value(d)}{mark}",
             f"   Population: {d.population or '-'} | Location: {d.location or '-'} | Period: {d.study_period or '-'}",
             f"   Source: {s.document}, page {s.page}, {s.element_id} ({s.element_type.value}, "
             f"section: {s.section or '-'}, reliability tier {s.tier})",
@@ -94,6 +103,10 @@ def to_text(report: Report) -> str:
             f"   Why: {d.reasoning}",
             "",
         ]
+    if excluded:
+        out.append("Excluded by you (undo in the app or outputs/decisions.json):")
+        for x in excluded:
+            out.append(f"  - {x.draft.measure_as_reported} = {_fmt_value(x.draft)} ({x.source.element_id})")
     if report.rejected:
         out.append("")
         out.append("Unverified candidates (not shown as answers):")

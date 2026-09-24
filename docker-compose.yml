@@ -1,14 +1,25 @@
 services:
+  ui:
+    build: .
+    entrypoint: ["streamlit", "run", "src/epiextract/app.py", "--server.address=0.0.0.0"]
+    command: []
+    ports:
+      - "8501:8501"
+    env_file:
+      - path: .env
+        required: false
+    volumes: &volumes
+      - ./data:/app/data          # put PDFs here
+      - ./outputs:/app/outputs    # parsed elements, run logs, decisions
+      - ./cache:/app/cache        # saved LLM responses (replay without credentials)
+      - ~/.aws:/root/.aws:ro      # optional: use your local AWS profile
+
   app:
     build: .
     env_file:
       - path: .env
         required: false
-    volumes:
-      - ./data:/app/data          # put PDFs here
-      - ./outputs:/app/outputs    # parsed elements and run logs
-      - ./cache:/app/cache        # saved LLM responses (replay without credentials)
-      - ~/.aws:/root/.aws:ro      # optional: use your local AWS profile
+    volumes: *volumes
 
   test:
     build: .

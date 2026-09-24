@@ -47,5 +47,3 @@ class Finder:
             f"Question: {question}"
         )
         return self.llm.extract(SYSTEM, prompt, FinderOutput)
-    
-    

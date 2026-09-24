@@ -50,3 +50,12 @@ def test_wrapped_header_joins_its_own_column(doc):
 
 def test_footnotes_below_table_are_not_merged(doc):
     assert "\nCFR = case fatality rate" in doc.get("p3-table2").content
+
+
+def test_evidence_crop_and_full_page(doc):
+    from epiextract.evidence import page_region
+    from conftest import SAMPLE
+    e = doc.get("p3-table1")
+    crop = page_region(SAMPLE, e.page, e.bbox)
+    full = page_region(SAMPLE, e.page, e.bbox, full_page=True)
+    assert full.size[1] > crop.size[1] * 2  # full page is much taller than the cropped region

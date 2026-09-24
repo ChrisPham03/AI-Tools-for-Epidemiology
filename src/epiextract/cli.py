@@ -13,6 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
+from .decisions import DecisionStore
 from .finder import Finder
 from .llm import default_client
 from .parser import PdfPlumberParser
@@ -39,7 +40,7 @@ def ask_cmd(pdf: Path, question: str) -> None:
     doc = PdfPlumberParser().parse(pdf)
     llm = default_client()
     found = Finder(llm).find(doc, question)
-    report = build_report(doc, question, found)
+    report = DecisionStore(OUTPUTS / "decisions.json").apply(build_report(doc, question, found))
     print(to_text(report))
 
     # run log: every step's input and output, for traceability
